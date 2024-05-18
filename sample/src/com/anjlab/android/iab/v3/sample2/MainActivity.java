@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (v.getId() == R.id.purchaseButton) {
-            bp.purchase(this,PRODUCT_ID);
+            bp.purchase(this,PRODUCT_ID, bp.generateSkuDetailsResponseListener(this, PRODUCT_ID));
         } else if (v.getId() == R.id.consumeButton) {
             bp.consumePurchaseAsync(PRODUCT_ID, new BillingProcessor.IPurchasesResponseListener()
             {

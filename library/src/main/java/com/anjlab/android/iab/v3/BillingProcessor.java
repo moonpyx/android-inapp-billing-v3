@@ -26,7 +26,9 @@ import com.android.billingclient.api.ConsumeResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
+import com.android.billingclient.api.QueryPurchasesParams;
 import com.android.billingclient.api.SkuDetailsParams;
+import com.android.billingclient.api.SkuDetailsResponseListener;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,6 +38,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 import android.app.Activity;
@@ -113,6 +116,8 @@ public class BillingProcessor extends BillingBase
 
 	private long reconnectMilliseconds = RECONNECT_TIMER_START_MILLISECONDS;
 
+	public String detailError;
+	public String asyncFinish;
 	private BillingClient billingService;
 	private String signatureBase64;
 	private BillingCache cachedProducts;
@@ -339,6 +344,7 @@ public class BillingProcessor extends BillingBase
 	 */
 	private void retryBillingClientConnection()
 	{
+		Log.d("retryBillingClient", "...");
 		handler.postDelayed(new Runnable()
 		{
 			@Override
@@ -380,6 +386,29 @@ public class BillingProcessor extends BillingBase
 		return billingService != null;
 	}
 
+	//for use in Kivy
+	public String getDetailError(){
+		return detailError;
+	}
+
+	public String getASyncFinish(){
+		return asyncFinish;
+	}
+
+	public void setAsyncFinish(String value){
+		asyncFinish = value;
+	}
+	public BillingCache getCachedProducts(){return cachedProducts; }
+
+	public BillingClient getBillingService(){return billingService;}
+
+	public BillingCache getCachedSubscriptions(){return cachedSubscriptions; }
+
+
+	public void setDetailError(){
+		detailError = null;
+	}
+
 	public boolean isPurchased(String productId)
 	{
 		return cachedProducts.includesProduct(productId);
@@ -400,7 +429,22 @@ public class BillingProcessor extends BillingBase
 		return cachedSubscriptions.getContents();
 	}
 
-	private void loadPurchasesByTypeAsync(String type, final BillingCache cacheStorage,
+
+	public void generateQueryPurchasesAsync(String type,
+											PurchasesResponseListener purchasesResponseListener){
+		Log.d("callQueryPurchasesAsync", "generateQueryPurchasesAsync");
+		if (!isConnected())
+		{
+			retryBillingClientConnection();
+			return;
+		}
+		QueryPurchasesParams params = QueryPurchasesParams.newBuilder()
+				.setProductType(type)
+				.build();
+		Log.d("callQueryPurchasesAsync", type);
+		billingService.queryPurchasesAsync(params, purchasesResponseListener);
+	}
+	public void loadPurchasesByTypeAsync(String type, final BillingCache cacheStorage,
 										  final IPurchasesResponseListener listener)
 	{
 		if (!isConnected())
@@ -409,7 +453,7 @@ public class BillingProcessor extends BillingBase
 			retryBillingClientConnection();
 			return;
 		}
-
+		asyncFinish = "";
 		billingService.queryPurchasesAsync(type, new PurchasesResponseListener()
 		{
 			@Override
@@ -419,6 +463,7 @@ public class BillingProcessor extends BillingBase
 				if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK)
 				{
 					cacheStorage.clear();
+					Log.d(LOG_TAG, "cacheStorage.clear()");
 					for (Purchase purchaseItem : list)
 					{
 						String jsonData = purchaseItem.getOriginalJson();
@@ -440,19 +485,21 @@ public class BillingProcessor extends BillingBase
 							}
 							catch (Exception e)
 							{
-								reportBillingError(
-										Constants.BILLING_ERROR_FAILED_LOAD_PURCHASES, e);
+								asyncFinish = "true"+"|"+String.valueOf(Constants.BILLING_ERROR_FAILED_LOAD_PURCHASES) + "|" + e.toString();
+//								reportBillingError(
+//										Constants.BILLING_ERROR_FAILED_LOAD_PURCHASES, e);
 								Log.e(LOG_TAG, "Error in loadPurchasesByType", e);
-								reportPurchasesError(listener);
+								//reportPurchasesError(listener);
 							}
 						}
 					}
-
-					reportPurchasesSuccess(listener);
+					asyncFinish = "true|reportPurchasesError";
+					//reportPurchasesSuccess(listener);
 				}
 				else
 				{
-					reportPurchasesError(listener);
+					asyncFinish = "true|reportPurchasesError";
+					//reportPurchasesError(listener);
 				}
 			}
 		});
@@ -466,6 +513,7 @@ public class BillingProcessor extends BillingBase
 	 */
 	public void loadOwnedPurchasesFromGoogleAsync(final IPurchasesResponseListener listener)
 	{
+		Log.d(LOG_TAG, "loadOwnedPurchasesFromGoogleAsync");
 		final IPurchasesResponseListener successListener = new IPurchasesResponseListener()
 		{
 			@Override
@@ -529,9 +577,9 @@ public class BillingProcessor extends BillingBase
 	 * @return {@code false} if the billing system is not initialized, {@code productId} is empty
 	 * or if an exception occurs. Will return {@code true} otherwise.
 	 */
-	public boolean purchase(Activity activity, String productId)
+	public boolean purchase(Activity activity, String productId, SkuDetailsResponseListener skuDetailsResponseListener)
 	{
-		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_MANAGED);
+		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_MANAGED, skuDetailsResponseListener);
 	}
 
 	/***
@@ -544,7 +592,7 @@ public class BillingProcessor extends BillingBase
 	 */
 	public boolean subscribe(Activity activity, String productId)
 	{
-		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_SUBSCRIPTION);
+		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_SUBSCRIPTION, generateSkuDetailsResponseListener(activity, productId));
 	}
 
 	/**
@@ -592,16 +640,17 @@ public class BillingProcessor extends BillingBase
 		{
 			return false;
 		}
-		return purchase(activity, oldProductId, productId, Constants.PRODUCT_TYPE_SUBSCRIPTION);
+		return purchase(activity, oldProductId, productId, Constants.PRODUCT_TYPE_SUBSCRIPTION, generateSkuDetailsResponseListener(activity, oldProductId));
 	}
 
-	private boolean purchase(Activity activity, String productId, String purchaseType)
+	private boolean purchase(Activity activity, String productId, String purchaseType,
+							 SkuDetailsResponseListener skuDetailsResponseListener)
 	{
-		return purchase(activity, null, productId, purchaseType);
+		return purchase(activity, null, productId, purchaseType, skuDetailsResponseListener);
 	}
 
 	private boolean purchase(final Activity activity, final String oldProductId, final String productId,
-							 String purchaseType)
+							 String purchaseType, SkuDetailsResponseListener skuDetailsResponseListener)
 	{
 		if (!isConnected() || TextUtils.isEmpty(productId) || TextUtils.isEmpty(purchaseType))
 		{
@@ -636,29 +685,8 @@ public class BillingProcessor extends BillingBase
 													  .build();
 
 			billingService.querySkuDetailsAsync(
-					params,
-					new com.android.billingclient.api.SkuDetailsResponseListener()
-					{
-						@Override
-						public void onSkuDetailsResponse(
-								@NonNull BillingResult billingResult,
-								@Nullable List<com.android.billingclient.api.SkuDetails> skuList)
-						{
-
-							if (skuList != null && !skuList.isEmpty())
-							{
-								startPurchaseFlow(activity, skuList.get(0), oldProductId);
-							}
-							else
-							{
-								// This will occur if product id does not match with the product type
-								Log.d("onSkuResponse: ", "product id mismatch with Product type");
-								reportBillingError(
-										Constants.BILLING_ERROR_FAILED_TO_INITIALIZE_PURCHASE,
-										null);
-							}
-						}
-					});
+					params, skuDetailsResponseListener
+					);
 
 			return true;
 		}
@@ -668,6 +696,32 @@ public class BillingProcessor extends BillingBase
 			reportBillingError(Constants.BILLING_ERROR_OTHER_ERROR, e);
 		}
 		return false;
+	}
+
+	public SkuDetailsResponseListener generateSkuDetailsResponseListener(Activity activity, String oldProductId){
+		return new com.android.billingclient.api.SkuDetailsResponseListener()
+		{
+			@Override
+			public void onSkuDetailsResponse(
+					@NonNull BillingResult billingResult,
+					@Nullable List<com.android.billingclient.api.SkuDetails> skuList)
+			{
+
+				if (skuList != null && !skuList.isEmpty())
+				{
+					startPurchaseFlow(activity, skuList.get(0), oldProductId);
+				}
+				else
+				{
+					// This will occur if product id does not match with the product type
+					Log.d("onSkuResponse: ", "product id mismatch with Product type");
+					detailError = String.valueOf(Constants.BILLING_ERROR_FAILED_TO_INITIALIZE_PURCHASE);
+//								reportBillingError(
+//										Constants.BILLING_ERROR_FAILED_TO_INITIALIZE_PURCHASE,
+//										null);
+				}
+			}
+		};
 	}
 
 	private void startPurchaseFlow(final Activity activity,
@@ -1087,25 +1141,31 @@ public class BillingProcessor extends BillingBase
 
 	private void reportBillingError(int errorCode, Throwable error)
 	{
+		asyncFinish = Objects.equals(asyncFinish, "") ? String.valueOf(errorCode) + "|" + error.toString() : asyncFinish;
 		if (eventHandler != null && handler != null)
 		{
-			handler.post(() -> eventHandler.onBillingError(errorCode, error));
+			//handler.post(() -> eventHandler.onBillingError(errorCode, error));
+			eventHandler.onBillingError(errorCode, error);
 		}
 	}
 
 	private void reportPurchasesSuccess(final IPurchasesResponseListener listener)
 	{
+		asyncFinish = Objects.equals(asyncFinish, "") ? "true|success" : asyncFinish;
 		if (listener != null && handler != null)
 		{
-			handler.post(() -> listener.onPurchasesSuccess());
+			//handler.post(() -> listener.onPurchasesSuccess());
+			listener.onPurchasesSuccess();
 		}
 	}
 
 	private void reportPurchasesError(final IPurchasesResponseListener listener)
 	{
+		asyncFinish = Objects.equals(asyncFinish, "") ? "false|reportPurchasesError" : asyncFinish;
 		if (listener != null && handler != null)
 		{
-			handler.post(() -> listener.onPurchasesError());
+			//handler.post(() -> listener.onPurchasesError());
+			listener.onPurchasesError();
 		}
 	}
 
@@ -1113,7 +1173,8 @@ public class BillingProcessor extends BillingBase
 	{
 		if (listener != null && handler != null)
 		{
-			handler.post(() -> listener.onSkuDetailsError(error));
+			//handler.post(() -> listener.onSkuDetailsError(error));
+			listener.onSkuDetailsError(error);
 		}
 	}
 
@@ -1122,7 +1183,8 @@ public class BillingProcessor extends BillingBase
 	{
 		if (listener != null && handler != null)
 		{
-			handler.post(() -> listener.onSkuDetailsResponse(products));
+			//handler.post(() -> listener.onSkuDetailsResponse(products));
+			listener.onSkuDetailsResponse(products);
 		}
 	}
 
@@ -1130,7 +1192,8 @@ public class BillingProcessor extends BillingBase
 	{
 		if (eventHandler != null && handler != null)
 		{
-			handler.post(() -> eventHandler.onProductPurchased(productId, details));
+			//handler.post(() -> eventHandler.onProductPurchased(productId, details));
+			eventHandler.onProductPurchased(productId, details);
 		}
 	}
 

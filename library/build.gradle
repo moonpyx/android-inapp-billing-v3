@@ -143,7 +143,7 @@ android.libraryVariants.all { variant ->
         copy {
             from task.archivePath
             into '../sample/libs'
-            rename { String fileName -> 'anjlab-iabv3-current.jar' }
+            rename { String fileName -> 'anjlab-iabv3-kivy.jar' }
         }
     }
     artifacts.add('archives', task);
