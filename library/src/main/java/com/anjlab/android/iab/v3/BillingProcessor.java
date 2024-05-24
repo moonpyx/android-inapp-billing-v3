@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import android.app.Activity;
 import android.content.Context;
@@ -580,6 +581,11 @@ public class BillingProcessor extends BillingBase
 	public boolean purchase(Activity activity, String productId, SkuDetailsResponseListener skuDetailsResponseListener)
 	{
 		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_MANAGED, skuDetailsResponseListener);
+	}
+
+	public boolean subscribe(Activity activity, String productId, SkuDetailsResponseListener skuDetailsResponseListener)
+	{
+		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_SUBSCRIPTION, skuDetailsResponseListener);
 	}
 
 	/***
