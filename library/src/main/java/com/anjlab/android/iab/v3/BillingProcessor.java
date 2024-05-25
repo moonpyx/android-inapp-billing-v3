@@ -495,7 +495,7 @@ public class BillingProcessor extends BillingBase
 						}
 					}
 					asyncFinish = "true|reportPurchasesError";
-					//reportPurchasesSuccess(listener);
+					reportPurchasesSuccess(listener);
 				}
 				else
 				{
