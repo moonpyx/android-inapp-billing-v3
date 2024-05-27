@@ -450,7 +450,9 @@ public class BillingProcessor extends BillingBase
 	{
 		if (!isConnected())
 		{
-			reportPurchasesError(listener);
+			if(listener!=null){
+				reportPurchasesError(listener);
+			}
 			retryBillingClientConnection();
 			return;
 		}
@@ -495,7 +497,9 @@ public class BillingProcessor extends BillingBase
 						}
 					}
 					asyncFinish = "true|reportPurchasesError";
-					reportPurchasesSuccess(listener);
+					if(listener!=null){
+						reportPurchasesSuccess(listener);
+					}
 				}
 				else
 				{
@@ -515,35 +519,6 @@ public class BillingProcessor extends BillingBase
 	public void loadOwnedPurchasesFromGoogleAsync(final IPurchasesResponseListener listener)
 	{
 		Log.d(LOG_TAG, "loadOwnedPurchasesFromGoogleAsync");
-		final IPurchasesResponseListener successListener = new IPurchasesResponseListener()
-		{
-			@Override
-			public void onPurchasesSuccess()
-			{
-				reportPurchasesSuccess(listener);
-			}
-
-			@Override
-			public void onPurchasesError()
-			{
-				reportPurchasesError(listener);
-			}
-		};
-
-		final IPurchasesResponseListener errorListener = new IPurchasesResponseListener()
-		{
-			@Override
-			public void onPurchasesSuccess()
-			{
-				reportPurchasesError(listener);
-			}
-
-			@Override
-			public void onPurchasesError()
-			{
-				reportPurchasesError(listener);
-			}
-		};
 
 		loadPurchasesByTypeAsync(
 				Constants.PRODUCT_TYPE_MANAGED,
@@ -556,7 +531,7 @@ public class BillingProcessor extends BillingBase
 						loadPurchasesByTypeAsync(
 								Constants.PRODUCT_TYPE_SUBSCRIPTION,
 								cachedSubscriptions,
-								successListener);
+								null);
 					}
 
 					@Override
@@ -565,7 +540,7 @@ public class BillingProcessor extends BillingBase
 						loadPurchasesByTypeAsync(
 								Constants.PRODUCT_TYPE_SUBSCRIPTION,
 								cachedSubscriptions,
-								errorListener);
+								null);
 					}
 				});
 	}
