@@ -23,9 +23,12 @@ import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
+import com.android.billingclient.api.ProductDetails;
+import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
+import com.android.billingclient.api.QueryProductDetailsParams;
 import com.android.billingclient.api.QueryPurchasesParams;
 import com.android.billingclient.api.SkuDetailsParams;
 import com.android.billingclient.api.SkuDetailsResponseListener;
@@ -430,6 +433,26 @@ public class BillingProcessor extends BillingBase
 		return cachedSubscriptions.getContents();
 	}
 
+
+	public void getProductDetailsAsync(String type, List<String> product_id, ProductDetailsResponseListener productDetailsResponseListener){
+
+		ArrayList<QueryProductDetailsParams.Product> products = new ArrayList<>();
+		for(String p_id : product_id){
+			products.add(QueryProductDetailsParams.Product.newBuilder()
+					.setProductId(p_id)
+					.setProductType(type)
+					.build());
+		}
+
+		QueryProductDetailsParams queryProductDetailsParams =
+				QueryProductDetailsParams.newBuilder()
+						.setProductList(products)
+						.build();
+
+		this.billingService.queryProductDetailsAsync(
+				queryProductDetailsParams, productDetailsResponseListener
+		);
+	}
 
 	public void generateQueryPurchasesAsync(String type,
 											PurchasesResponseListener purchasesResponseListener){
