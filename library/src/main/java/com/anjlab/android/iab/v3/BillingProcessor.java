@@ -434,15 +434,16 @@ public class BillingProcessor extends BillingBase
 	}
 
 
-	public void getProductDetailsAsync(String type, List<String> product_id, ProductDetailsResponseListener productDetailsResponseListener){
+	public void getProductDetailsAsync(String type, List<String> product_ids, ProductDetailsResponseListener productDetailsResponseListener){
 
 		ArrayList<QueryProductDetailsParams.Product> products = new ArrayList<>();
-		for(String p_id : product_id){
+		for(String p_id : product_ids){
 			products.add(QueryProductDetailsParams.Product.newBuilder()
 					.setProductId(p_id)
 					.setProductType(type)
 					.build());
 		}
+
 
 		QueryProductDetailsParams queryProductDetailsParams =
 				QueryProductDetailsParams.newBuilder()
