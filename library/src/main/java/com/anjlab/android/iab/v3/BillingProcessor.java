@@ -753,7 +753,7 @@ public class BillingProcessor extends BillingBase
 						billingFlowParamsBuilder.setSubscriptionUpdateParams(
 								BillingFlowParams.SubscriptionUpdateParams
 										.newBuilder()
-										.setOldSkuPurchaseToken(oldToken)
+										.setOldPurchaseToken(oldToken)
 										.build());
 					}
 				}
