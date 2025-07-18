@@ -23,12 +23,14 @@ import com.android.billingclient.api.BillingFlowParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
+import com.android.billingclient.api.PendingPurchasesParams;
 import com.android.billingclient.api.ProductDetails;
 import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesResponseListener;
 import com.android.billingclient.api.PurchasesUpdatedListener;
 import com.android.billingclient.api.QueryProductDetailsParams;
+import com.android.billingclient.api.QueryProductDetailsResult;
 import com.android.billingclient.api.QueryPurchasesParams;
 import com.android.billingclient.api.SkuDetailsParams;
 import com.android.billingclient.api.SkuDetailsResponseListener;
@@ -44,6 +46,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import android.app.Activity;
 import android.content.Context;
@@ -91,7 +94,7 @@ public class BillingProcessor extends BillingBase
 	 */
 	public interface ISkuDetailsResponseListener
 	{
-		void onSkuDetailsResponse(@Nullable List<SkuDetails> products);
+		void onSkuDetailsResponse(@Nullable List<ProductDetails> products);
 
 		void onSkuDetailsError(String error);
 	}
@@ -286,9 +289,10 @@ public class BillingProcessor extends BillingBase
 		};
 
 		billingService = BillingClient.newBuilder(context)
-									  .enablePendingPurchases()
+				.enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
 									  .setListener(listener)
 									  .build();
+		Log.d("billingService OK!; ", "IsConnected");
 	}
 
 	/**
@@ -481,7 +485,7 @@ public class BillingProcessor extends BillingBase
 			return;
 		}
 		asyncFinish = "";
-		billingService.queryPurchasesAsync(type, new PurchasesResponseListener()
+		billingService.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(type).build(), new PurchasesResponseListener()
 		{
 			@Override
 			public void onQueryPurchasesResponse(@NonNull BillingResult billingResult,
@@ -577,12 +581,12 @@ public class BillingProcessor extends BillingBase
 	 * @return {@code false} if the billing system is not initialized, {@code productId} is empty
 	 * or if an exception occurs. Will return {@code true} otherwise.
 	 */
-	public boolean purchase(Activity activity, String productId, SkuDetailsResponseListener skuDetailsResponseListener)
+	public boolean purchase(Activity activity, String productId, ProductDetailsResponseListener skuDetailsResponseListener)
 	{
 		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_MANAGED, skuDetailsResponseListener);
 	}
 
-	public boolean subscribe(Activity activity, String productId, SkuDetailsResponseListener skuDetailsResponseListener)
+	public boolean subscribe(Activity activity, String productId, ProductDetailsResponseListener skuDetailsResponseListener)
 	{
 		return purchase(activity, null, productId, Constants.PRODUCT_TYPE_SUBSCRIPTION, skuDetailsResponseListener);
 	}
@@ -649,13 +653,13 @@ public class BillingProcessor extends BillingBase
 	}
 
 	private boolean purchase(Activity activity, String productId, String purchaseType,
-							 SkuDetailsResponseListener skuDetailsResponseListener)
+							 ProductDetailsResponseListener skuDetailsResponseListener)
 	{
 		return purchase(activity, null, productId, purchaseType, skuDetailsResponseListener);
 	}
 
 	private boolean purchase(final Activity activity, final String oldProductId, final String productId,
-							 String purchaseType, SkuDetailsResponseListener skuDetailsResponseListener)
+							 String purchaseType, ProductDetailsResponseListener skuDetailsResponseListener)
 	{
 		if (!isConnected() || TextUtils.isEmpty(productId) || TextUtils.isEmpty(purchaseType))
 		{
@@ -682,14 +686,18 @@ public class BillingProcessor extends BillingBase
 			}
 			savePurchasePayload(purchasePayload);
 
-			List<String> skuList = new ArrayList<>();
-			skuList.add(productId);
-			SkuDetailsParams params = SkuDetailsParams.newBuilder()
-													  .setSkusList(skuList)
-													  .setType(purchaseType)
-													  .build();
+			ArrayList<QueryProductDetailsParams.Product> products = new ArrayList<>();
+			products.add(QueryProductDetailsParams.Product.newBuilder()
+					.setProductId(productId)
+					.setProductType(purchaseType)
+					.build());
+			QueryProductDetailsParams params =
+					QueryProductDetailsParams.newBuilder()
+							.setProductList(
+									products)
+							.build();
 
-			billingService.querySkuDetailsAsync(
+			billingService.queryProductDetailsAsync(
 					params, skuDetailsResponseListener
 					);
 
@@ -703,15 +711,13 @@ public class BillingProcessor extends BillingBase
 		return false;
 	}
 
-	public SkuDetailsResponseListener generateSkuDetailsResponseListener(Activity activity, String oldProductId){
-		return new com.android.billingclient.api.SkuDetailsResponseListener()
+	public ProductDetailsResponseListener generateSkuDetailsResponseListener(Activity activity, String oldProductId){
+		return new com.android.billingclient.api.ProductDetailsResponseListener()
 		{
 			@Override
-			public void onSkuDetailsResponse(
-					@NonNull BillingResult billingResult,
-					@Nullable List<com.android.billingclient.api.SkuDetails> skuList)
-			{
-
+			public void onProductDetailsResponse(@NonNull BillingResult billingResult,
+												 @NonNull QueryProductDetailsResult queryProductDetailsResult) {
+				List<ProductDetails> skuList = queryProductDetailsResult.getProductDetailsList();
 				if (skuList != null && !skuList.isEmpty())
 				{
 					startPurchaseFlow(activity, skuList.get(0), oldProductId);
@@ -730,10 +736,10 @@ public class BillingProcessor extends BillingBase
 	}
 
 	private void startPurchaseFlow(final Activity activity,
-								   final com.android.billingclient.api.SkuDetails skuDetails,
+								   final com.android.billingclient.api.ProductDetails skuDetails,
 								   final String oldProductId)
 	{
-		final String productId = skuDetails.getSku();
+		final String productId = skuDetails.getProductId();
 
 		handler.post(new Runnable()
 		{
@@ -741,7 +747,15 @@ public class BillingProcessor extends BillingBase
 			public void run()
 			{
 				BillingFlowParams.Builder billingFlowParamsBuilder = BillingFlowParams.newBuilder();
-				billingFlowParamsBuilder.setSkuDetails(skuDetails);
+
+
+                List<BillingFlowParams.ProductDetailsParams> productDetailsParamsList = new ArrayList<>();
+                productDetailsParamsList.add(BillingFlowParams.ProductDetailsParams.newBuilder()
+						.setOfferToken(skuDetails.getSubscriptionOfferDetails().get(0).getOfferToken())
+                        .setProductDetails(skuDetails).build());
+
+                billingFlowParamsBuilder.setProductDetailsParamsList(
+                        productDetailsParamsList);
 
 				if (!TextUtils.isEmpty(oldProductId))
 				{
@@ -915,12 +929,12 @@ public class BillingProcessor extends BillingBase
 	private void getSkuDetailsAsync(final String productId, String purchaseType,
 									final ISkuDetailsResponseListener listener)
 	{
-		ArrayList<String> productIdList = new ArrayList<>();
-		productIdList.add(productId);
+		ArrayList<QueryProductDetailsParams.Product> productIdList = new ArrayList<>();
+		productIdList.add(QueryProductDetailsParams.Product.newBuilder().setProductId(productId).build());
 		getSkuDetailsAsync(productIdList, purchaseType, new ISkuDetailsResponseListener()
 		{
 			@Override
-			public void onSkuDetailsResponse(@Nullable List<SkuDetails> products)
+			public void onSkuDetailsResponse(@Nullable List<ProductDetails> products)
 			{
 				if (products != null)
 				{
@@ -939,7 +953,7 @@ public class BillingProcessor extends BillingBase
 		});
 	}
 
-	private void getSkuDetailsAsync(final ArrayList<String> productIdList, String purchaseType,
+	private void getSkuDetailsAsync(final ArrayList<QueryProductDetailsParams.Product> productIdList, String purchaseType,
 									final ISkuDetailsResponseListener listener)
 	{
 		if (billingService == null || !billingService.isReady())
@@ -955,37 +969,28 @@ public class BillingProcessor extends BillingBase
 
 		try
 		{
-			SkuDetailsParams skuDetailsParams = SkuDetailsParams.newBuilder()
-																.setSkusList(productIdList)
-																.setType(purchaseType)
+			QueryProductDetailsParams skuDetailsParams = QueryProductDetailsParams.newBuilder()
+																.setProductList(productIdList)
 																.build();
-			final ArrayList<SkuDetails> productDetails = new ArrayList<>();
+			final ArrayList<ProductDetails> productDetails = new ArrayList<>();
 
-			billingService.querySkuDetailsAsync(
+			billingService.queryProductDetailsAsync(
 					skuDetailsParams,
-					new com.android.billingclient.api.SkuDetailsResponseListener()
+					new com.android.billingclient.api.ProductDetailsResponseListener()
 					{
 						@Override
-						public void onSkuDetailsResponse(
-								@NonNull BillingResult billingResult,
-								@Nullable List<com.android.billingclient.api.SkuDetails> detailsList)
-						{
+						public void onProductDetailsResponse(@NonNull BillingResult billingResult,
+															 @NonNull QueryProductDetailsResult queryProductDetailsResult) {
 							int response = billingResult.getResponseCode();
+
+							List<ProductDetails> detailsList = queryProductDetailsResult.getProductDetailsList();
 							if (response == BillingClient.BillingResponseCode.OK)
 							{
 								if (detailsList != null && detailsList.size() > 0)
 								{
-									for (com.android.billingclient.api.SkuDetails skuDetails : detailsList)
+									for (com.android.billingclient.api.ProductDetails skuDetails : detailsList)
 									{
-										try
-										{
-											JSONObject object = new JSONObject(skuDetails.getOriginalJson());
-											productDetails.add(new SkuDetails(object));
-										}
-										catch (JSONException jsonException)
-										{
-											jsonException.printStackTrace();
-										}
+										productDetails.add(skuDetails);
 									}
 								}
 
@@ -995,8 +1000,8 @@ public class BillingProcessor extends BillingBase
 							{
 								reportBillingError(response, null);
 								String errorMessage = String.format(Locale.US,
-																	"Failed to retrieve info for %d products, %d",
-																	productIdList.size(), response);
+										"Failed to retrieve info for %d products, %d",
+										productIdList.size(), response);
 								Log.e(LOG_TAG, errorMessage);
 
 								reportSkuDetailsErrorCaller(errorMessage, listener);
@@ -1018,7 +1023,7 @@ public class BillingProcessor extends BillingBase
 		 getSkuDetailsAsync(productId, Constants.PRODUCT_TYPE_MANAGED, listener);
 	}
 
-	public void getPurchaseListingDetailsAsync(ArrayList<String> productIdList,
+	public void getPurchaseListingDetailsAsync(ArrayList<QueryProductDetailsParams.Product> productIdList,
 											   final ISkuDetailsResponseListener listener)
 	{
 		getSkuDetailsAsync(productIdList, Constants.PRODUCT_TYPE_MANAGED, listener);
@@ -1029,7 +1034,7 @@ public class BillingProcessor extends BillingBase
 		getSkuDetailsAsync(productId, Constants.PRODUCT_TYPE_SUBSCRIPTION, listener);
 	}
 
-	public void getSubscriptionsListingDetailsAsync(ArrayList<String> productIds, ISkuDetailsResponseListener listener)
+	public void getSubscriptionsListingDetailsAsync(ArrayList<QueryProductDetailsParams.Product> productIds, ISkuDetailsResponseListener listener)
 	{
 		getSkuDetailsAsync(productIds, Constants.PRODUCT_TYPE_SUBSCRIPTION, listener);
 	}
@@ -1183,7 +1188,7 @@ public class BillingProcessor extends BillingBase
 		}
 	}
 
-	private void reportSkuDetailsResponseCaller(@Nullable final List<SkuDetails> products,
+	private void reportSkuDetailsResponseCaller(@Nullable final List<ProductDetails> products,
 												final ISkuDetailsResponseListener listener)
 	{
 		if (listener != null && handler != null)

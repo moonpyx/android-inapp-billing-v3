@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (v.getId() == R.id.purchaseButton) {
-            bp.purchase(this,PRODUCT_ID, bp.generateSkuDetailsResponseListener(this, PRODUCT_ID));
+            //bp.purchase(this,PRODUCT_ID, bp.generateSkuDetailsResponseListener(this, PRODUCT_ID));
         } else if (v.getId() == R.id.consumeButton) {
             bp.consumePurchaseAsync(PRODUCT_ID, new BillingProcessor.IPurchasesResponseListener()
             {
@@ -137,21 +137,7 @@ public class MainActivity extends Activity {
                 }
             });
         } else if (v.getId() == R.id.productDetailsButton) {
-            bp.getPurchaseListingDetailsAsync(PRODUCT_ID, new BillingProcessor.ISkuDetailsResponseListener() {
-                @Override
-                public void onSkuDetailsResponse(@Nullable List<SkuDetails> products) {
-                    if (products != null && !products.isEmpty()) {
-                        showToast(products.get(0).toString());
-                    } else {
-                        showToast("Failed to load SKU details");
-                    }
-                }
 
-                @Override
-                public void onSkuDetailsError(String error) {
-                    showToast(error);
-                }
-            });
         } else if (v.getId() == R.id.subscribeButton) {
             bp.subscribe(this,SUBSCRIPTION_ID);
         } else if (v.getId() == R.id.updateSubscriptionsButton) {
@@ -171,18 +157,7 @@ public class MainActivity extends Activity {
                 }
             });
         } else if (v.getId() == R.id.subsDetailsButton) {
-            bp.getSubscriptionListingDetailsAsync(SUBSCRIPTION_ID, new BillingProcessor.ISkuDetailsResponseListener()
-            {
-                @Override
-                public void onSkuDetailsResponse(@Nullable final List<SkuDetails> products) {
-                    showToast(products != null ? products.toString() : "Failed to load subscription details");
-                }
 
-                @Override
-                public void onSkuDetailsError(String string) {
-                    showToast(string);
-                }
-            });
         } else if (v.getId() == R.id.launchMoreButton)
         {
             Intent intent = new Intent(this, MainActivity.class);
